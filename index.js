@@ -22,14 +22,21 @@ const reportTypes = {
   magazyny: { label: "🏭 Magazyny", price: 20000, requiresPeople: false },
   capt_win: { label: "🏆 Capt Win", price: 5000, requiresPeople: false },
   capt_lose: { label: "❌ Capt Lose", price: 0, requiresPeople: false },
+
+  airdrop_win: { label: "📦 Airdrop Win", price: 20000, requiresPeople: false },
+  mcl_win: { label: "🏍️ MCL Win", price: 20000, requiresPeople: false },
+  dealer_win: { label: "💰 Dealer Win", price: 20000, requiresPeople: false },
+
+  grover: { label: "🌿 Ty Grover", price: 240000, requiresPeople: false },
+
   korekta: { label: "⚖️ Korekta", price: 0, requiresPeople: false }
 };
 
 // ===== DB SETUP =====
 const db = new sqlite3.Database("./database.db");
-const dbRun = (query, params = []) => new Promise((res, rej) => db.run(query, params, (err) => err ? rej(err) : res()));
-const dbAll = (query, params = []) => new Promise((res, rej) => db.all(query, params, (err, rows) => err ? rej(err) : res(rows)));
-const dbGet = (query, params = []) => new Promise((res, rej) => db.get(query, params, (err, row) => err ? rej(err) : res(row)));
+const dbRun = (q, p=[]) => new Promise((res, rej) => db.run(q, p, e => e?rej(e):res()));
+const dbAll = (q, p=[]) => new Promise((res, rej) => db.all(q, p, (e,r)=>e?rej(e):res(r)));
+const dbGet = (q, p=[]) => new Promise((res, rej) => db.get(q, p, (e,r)=>e?rej(e):res(r)));
 
 db.serialize(() => {
   db.run("CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT, type TEXT, amount INTEGER, imageUrl TEXT, date TEXT)");
@@ -41,146 +48,102 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rejestracja")
     .setDescription("Zarejestruj swoje ID z gry")
-    .addStringOption(opt => opt.setName("id").setDescription("Twoje ID w grze").setRequired(true)),
+    .addStringOption(opt => opt.setName("id").setDescription("Twoje ID").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("raport")
-    .setDescription("Dodaj raport z akcji")
-    .addStringOption(opt => 
-      opt.setName("typ").setDescription("Typ akcji").setRequired(true)
-        .addChoices(...Object.entries(reportTypes).filter(([k]) => k !== "korekta").map(([k, v]) => ({ name: v.label, value: k }))))
-    .addAttachmentOption(opt => opt.setName("screen").setDescription("Dowod (zdjecie)").setRequired(true))
-    .addIntegerOption(opt => opt.setName("osoby").setDescription("Liczba osob").setMinValue(1)),
+    .setDescription("Dodaj raport")
+    .addStringOption(opt =>
+      opt.setName("typ").setDescription("Typ").setRequired(true)
+        .addChoices(...Object.entries(reportTypes)
+          .filter(([k]) => k !== "korekta")
+          .map(([k,v]) => ({ name: v.label, value: k }))))
+    .addAttachmentOption(opt => opt.setName("screen").setRequired(true))
+    .addIntegerOption(opt => opt.setName("osoby").setMinValue(1)),
 
-  new SlashCommandBuilder().setName("raport_stats").setDescription("Twoje statystyki"),
+  new SlashCommandBuilder().setName("raport_stats").setDescription("Statystyki"),
 
   new SlashCommandBuilder()
     .setName("weryfikuj")
-    .setDescription("Zatwierdz ID uzytkownika (Admin)")
-    .addUserOption(opt => opt.setName("gracz").setDescription("Gracz").setRequired(true))
-    .addBooleanOption(opt => opt.setName("status").setDescription("Zatwierdzic?").setRequired(true))
+    .setDescription("Admin")
+    .addUserOption(o=>o.setName("gracz").setRequired(true))
+    .addBooleanOption(o=>o.setName("status").setRequired(true))
     .setDefaultMemberPermissions(0),
 
   new SlashCommandBuilder()
     .setName("raport_korekta")
-    .setDescription("Dodaj/odejmij srodki (Admin)")
-    .addUserOption(opt => opt.setName("gracz").setDescription("Gracz").setRequired(true))
-    .addIntegerOption(opt => opt.setName("kwota").setDescription("Kwota (minus aby odjac)").setRequired(true))
+    .addUserOption(o=>o.setName("gracz").setRequired(true))
+    .addIntegerOption(o=>o.setName("kwota").setRequired(true))
     .setDefaultMemberPermissions(0),
 
-  new SlashCommandBuilder().setName("raport_summary").setDescription("Lista wyplat na czacie (Admin)").setDefaultMemberPermissions(0),
-  new SlashCommandBuilder().setName("raport_export").setDescription("Generuj plik TXT do wyplat (Admin)").setDefaultMemberPermissions(0),
-  new SlashCommandBuilder().setName("raport_reset").setDescription("Czysci baze (Admin)").setDefaultMemberPermissions(0)
-].map(cmd => cmd.toJSON());
+  new SlashCommandBuilder().setName("raport_summary").setDefaultMemberPermissions(0),
+  new SlashCommandBuilder().setName("raport_export").setDefaultMemberPermissions(0),
+  new SlashCommandBuilder().setName("raport_reset").setDefaultMemberPermissions(0)
+].map(c=>c.toJSON());
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+const client = new Client({ intents:[GatewayIntentBits.Guilds] });
+const rest = new REST({version:"10"}).setToken(process.env.TOKEN);
 
-(async () => {
-  try {
-    await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commands });
-    console.log("✅ Komendy zarejestrowane.");
-  } catch (err) { console.error(err); }
+(async()=>{
+  await rest.put(
+    Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+    { body: commands }
+  );
+  console.log("✅ Komendy gotowe");
 })();
 
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+client.on("interactionCreate", async i=>{
+  if(!i.isChatInputCommand()) return;
 
-  try {
-    if (interaction.commandName === "rejestracja") {
-      const gId = interaction.options.getString("id");
-      await dbRun("INSERT OR REPLACE INTO users (discordId, gameId, verified) VALUES (?, ?, 0)", [interaction.user.id, gId]);
-      const logChan = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-      if (logChan) logChan.send("🔔 **Weryfikacja:** <@" + interaction.user.id + "> zglosil ID: " + gId);
-      return interaction.reply({ content: "✅ Zapisano. Czekaj na weryfikacje Admina.", flags: [MessageFlags.Ephemeral] });
+  try{
+    if(i.commandName==="rejestracja"){
+      const id=i.options.getString("id");
+      await dbRun("INSERT OR REPLACE INTO users VALUES(?,?,0)",[i.user.id,id]);
+      return i.reply({content:"✅ Zapisano",flags:[MessageFlags.Ephemeral]});
     }
 
-    if (interaction.commandName === "weryfikuj") {
-      const target = interaction.options.getUser("gracz");
-      const status = interaction.options.getBoolean("status");
-      await dbRun("UPDATE users SET verified = ? WHERE discordId = ?", [status ? 1 : 0, target.id]);
-      return interaction.reply("Status <@" + target.id + ">: " + (status ? "✅ Zweryfikowany" : "❌ Zablokowany"));
+    if(i.commandName==="raport"){
+      const u=await dbGet("SELECT * FROM users WHERE discordId=? AND verified=1",[i.user.id]);
+      if(!u) return i.reply({content:"❌ Brak weryfikacji",flags:[MessageFlags.Ephemeral]});
+
+      const type=i.options.getString("typ");
+      const people=i.options.getInteger("osoby");
+      const screen=i.options.getAttachment("screen");
+      const cfg=reportTypes[type];
+
+      if(cfg.requiresPeople && !people)
+        return i.reply({content:"❌ Podaj osoby",flags:[MessageFlags.Ephemeral]});
+
+      await i.deferReply({flags:[MessageFlags.Ephemeral]});
+      const amt=cfg.requiresPeople?Math.floor(cfg.price/people):cfg.price;
+
+      await dbRun("INSERT INTO reports VALUES(NULL,?,?,?,?,datetime('now'))",
+        [i.user.id,type,amt,screen.url]);
+
+      return i.editReply("✅ +" + amt + "$");
     }
 
-    if (interaction.commandName === "raport") {
-      const u = await dbGet("SELECT * FROM users WHERE discordId = ? AND verified = 1", [interaction.user.id]);
-      if (!u) return interaction.reply({ content: "❌ Brak weryfikacji ID! Uzyj `/rejestracja`.", flags: [MessageFlags.Ephemeral] });
+    if(i.commandName==="raport_stats"){
+      const total=await dbGet("SELECT SUM(amount) as total FROM reports WHERE userId=?",[i.user.id]);
+      const rows=await dbAll("SELECT type,COUNT(*) as count FROM reports WHERE userId=? GROUP BY type",[i.user.id]);
 
-      const type = interaction.options.getString("typ");
-      const people = interaction.options.getInteger("osoby");
-      const screen = interaction.options.getAttachment("screen");
-      const cfg = reportTypes[type];
+      let msg="📊 Statystyki\n💰 "+(total.total||0)+"$\n\n";
 
-      if (cfg.requiresPeople && !people) return interaction.reply({ content: "❌ Podaj liczbe osob!", flags: [MessageFlags.Ephemeral] });
-
-      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-      const amt = cfg.requiresPeople ? Math.floor(cfg.price / people) : cfg.price;
-
-      await dbRun("INSERT INTO reports (userId, type, amount, imageUrl, date) VALUES (?, ?, ?, ?, datetime('now'))", 
-        [interaction.user.id, type, amt, screen.url]);
-
-      const logChan = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-      if (logChan) {
-        logChan.send({
-          content: "📑 **Raport:** <@" + interaction.user.id + "> | ID: " + u.gameId + "\n**Typ:** " + cfg.label + "\n**Zarobek:** " + amt.toLocaleString() + "$",
-          files: [screen.url]
-        });
-      }
-      return interaction.editReply("✅ Wyslano! +**" + amt.toLocaleString() + "$**");
-    }
-
-    if (interaction.commandName === "raport_korekta") {
-      const target = interaction.options.getUser("gracz");
-      const amt = interaction.options.getInteger("kwota");
-      const u = await dbGet("SELECT gameId FROM users WHERE discordId = ?", [target.id]);
-      if (!u) return interaction.reply({ content: "❌ Ten gracz nie ma zarejestrowanego ID!", flags: [MessageFlags.Ephemeral] });
-
-      await dbRun("INSERT INTO reports (userId, type, amount, imageUrl, date) VALUES (?, 'korekta', ?, 'KOREKTA', datetime('now'))", 
-        [target.id, amt]);
-      return interaction.reply("✅ Korekta dla <@" + target.id + ">: **" + amt.toLocaleString() + "$**");
-    }
-
-    if (interaction.commandName === "raport_stats") {
-      const r = await dbGet("SELECT SUM(amount) as total FROM reports WHERE userId = ?", [interaction.user.id]);
-      return interaction.reply("💰 Twoja suma: **" + (r.total || 0).toLocaleString() + "$**");
-    }
-
-    if (interaction.commandName === "raport_summary") {
-      const rows = await dbAll("SELECT r.userId, u.gameId, SUM(r.amount) as total, COUNT(r.id) as count FROM reports r JOIN users u ON r.userId = u.discordId GROUP BY u.gameId ORDER BY total DESC");
-      if (rows.length === 0) return interaction.reply("Baza jest pusta.");
-
-      let msg = "📊 **Podsumowanie zarobkow:**\n";
-      rows.forEach(r => {
-        msg += "<@" + r.userId + "> | ID: `" + r.gameId + "` | Wyplata: **" + r.total.toLocaleString() + "$** | Kontrakty: `" + r.count + "`\n";
-      });
-      return interaction.reply(msg);
-    }
-
-    if (interaction.commandName === "raport_export") {
-      const rows = await dbAll("SELECT u.gameId, SUM(r.amount) as total FROM reports r JOIN users u ON r.userId = u.discordId GROUP BY u.gameId");
-      if (rows.length === 0) return interaction.reply("Brak danych do eksportu.");
-
-      // Nagłówek pliku TXT
-      let txt = "staticId;amount;comment\n"; 
-      
-      rows.forEach(r => {
-        txt += r.gameId + ";" + r.total + ";wyplata\n";
+      rows.forEach(r=>{
+        msg+=reportTypes[r.type].label+": "+r.count+"\n";
       });
 
-      fs.writeFileSync("wyplaty.txt", txt);
-      const file = new AttachmentBuilder("wyplaty.txt");
-      await interaction.reply({ content: "📂 Wygenerowano plik do wyplat:", files: [file] });
-      return fs.unlinkSync("wyplaty.txt");
+      return i.reply(msg);
     }
 
-    if (interaction.commandName === "raport_reset") {
+    if(i.commandName==="raport_reset"){
       await dbRun("DELETE FROM reports");
-      return interaction.reply("🧨 Wyczyszczono baze raportow.");
+      return i.reply("🧨 Reset");
     }
 
-  } catch (err) {
-    console.error(err);
-    if (!interaction.replied) await interaction.reply({ content: "Blad!", flags: [MessageFlags.Ephemeral] });
+  }catch(e){
+    console.error(e);
+    if(!i.replied) i.reply("Blad");
   }
 });
 
