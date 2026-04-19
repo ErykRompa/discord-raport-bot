@@ -64,10 +64,10 @@ const commands = [
     .addBooleanOption(o => o.setName("status").setDescription("Czy zatwierdzić?").setRequired(true))
     .setDefaultMemberPermissions(0),
 
-  new SlashCommandBuilder()
+ new SlashCommandBuilder()
     .setName("raport_korekta")
     .setDescription("Dodaj/odejmij środki graczowi (Admin)")
-    .addUserOption(o => o.setName("gracz").setRequired(true))
+    .addUserOption(o => o.setName("gracz").setDescription("Wybierz gracza").setRequired(true)) // Dodano opis
     .addIntegerOption(o => o.setName("kwota").setDescription("Kwota (użyj minusa aby odjąć)").setRequired(true))
     .setDefaultMemberPermissions(0),
 
