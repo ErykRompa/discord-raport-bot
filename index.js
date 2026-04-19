@@ -27,18 +27,18 @@ const reportTypes = {
   mcl_win: { label: "🏍️ MCL Win", price: 20000, requiresPeople: false },
   dealer_win: { label: "💰 Dealer Win", price: 20000, requiresPeople: false },
 
-  grover: { label: "🌿 Ty Grover", price: 240000, requiresPeople: false },
+  grover: { label: "🌿 Grover", price: 240000, requiresPeople: false },
 
   korekta: { label: "⚖️ Korekta", price: 0, requiresPeople: false }
 };
 
-// ===== DB SETUP =====
+// ===== DB =====
 const db = new sqlite3.Database("./database.db");
-const dbRun = (q, p=[]) => new Promise((res, rej) => db.run(q, p, e => e?rej(e):res()));
-const dbAll = (q, p=[]) => new Promise((res, rej) => db.all(q, p, (e,r)=>e?rej(e):res(r)));
-const dbGet = (q, p=[]) => new Promise((res, rej) => db.get(q, p, (e,r)=>e?rej(e):res(r)));
+const dbRun = (q,p=[])=>new Promise((res,rej)=>db.run(q,p,e=>e?rej(e):res()));
+const dbAll = (q,p=[])=>new Promise((res,rej)=>db.all(q,p,(e,r)=>e?rej(e):res(r)));
+const dbGet = (q,p=[])=>new Promise((res,rej)=>db.get(q,p,(e,r)=>e?rej(e):res(r)));
 
-db.serialize(() => {
+db.serialize(()=>{
   db.run("CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT, type TEXT, amount INTEGER, imageUrl TEXT, date TEXT)");
   db.run("CREATE TABLE IF NOT EXISTS users (discordId TEXT PRIMARY KEY, gameId TEXT, verified INTEGER DEFAULT 0)");
 });
@@ -48,39 +48,59 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rejestracja")
     .setDescription("Zarejestruj swoje ID z gry")
-    .addStringOption(opt => opt.setName("id").setDescription("Twoje ID").setRequired(true)),
+    .addStringOption(opt => 
+      opt.setName("id").setDescription("Twoje ID").setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("raport")
     .setDescription("Dodaj raport")
     .addStringOption(opt =>
-      opt.setName("typ").setDescription("Typ").setRequired(true)
-        .addChoices(...Object.entries(reportTypes)
-          .filter(([k]) => k !== "korekta")
-          .map(([k,v]) => ({ name: v.label, value: k }))))
-    .addAttachmentOption(opt => opt.setName("screen").setRequired(true))
-    .addIntegerOption(opt => opt.setName("osoby").setMinValue(1)),
+      opt.setName("typ")
+        .setDescription("Typ raportu")
+        .setRequired(true)
+        .addChoices(
+          ...Object.entries(reportTypes)
+            .filter(([k]) => k !== "korekta")
+            .map(([k,v]) => ({ name: v.label, value: k }))
+        )
+    )
+    .addAttachmentOption(opt => 
+      opt.setName("screen")
+        .setDescription("Dowód (zdjęcie)") // 🔥 FIX
+        .setRequired(true)
+    )
+    .addIntegerOption(opt => 
+      opt.setName("osoby")
+        .setDescription("Liczba osób") // 🔥 też dodane dla bezpieczeństwa
+        .setMinValue(1)
+    ),
 
-  new SlashCommandBuilder().setName("raport_stats").setDescription("Statystyki"),
+  new SlashCommandBuilder()
+    .setName("raport_stats")
+    .setDescription("Statystyki"),
 
   new SlashCommandBuilder()
     .setName("weryfikuj")
-    .setDescription("Admin")
-    .addUserOption(o=>o.setName("gracz").setRequired(true))
-    .addBooleanOption(o=>o.setName("status").setRequired(true))
+    .setDescription("Admin weryfikacja")
+    .addUserOption(o=>o.setName("gracz").setDescription("Gracz").setRequired(true))
+    .addBooleanOption(o=>o.setName("status").setDescription("Status").setRequired(true))
     .setDefaultMemberPermissions(0),
 
   new SlashCommandBuilder()
     .setName("raport_korekta")
-    .addUserOption(o=>o.setName("gracz").setRequired(true))
-    .addIntegerOption(o=>o.setName("kwota").setRequired(true))
+    .setDescription("Korekta admin")
+    .addUserOption(o=>o.setName("gracz").setDescription("Gracz").setRequired(true))
+    .addIntegerOption(o=>o.setName("kwota").setDescription("Kwota").setRequired(true))
     .setDefaultMemberPermissions(0),
 
-  new SlashCommandBuilder().setName("raport_summary").setDefaultMemberPermissions(0),
-  new SlashCommandBuilder().setName("raport_export").setDefaultMemberPermissions(0),
-  new SlashCommandBuilder().setName("raport_reset").setDefaultMemberPermissions(0)
+  new SlashCommandBuilder().setName("raport_summary").setDescription("Podsumowanie").setDefaultMemberPermissions(0),
+  new SlashCommandBuilder().setName("raport_export").setDescription("Export").setDefaultMemberPermissions(0),
+  new SlashCommandBuilder().setName("raport_reset").setDescription("Reset").setDefaultMemberPermissions(0)
+
 ].map(c=>c.toJSON());
 
+// ===== CLIENT =====
 const client = new Client({ intents:[GatewayIntentBits.Guilds] });
 const rest = new REST({version:"10"}).setToken(process.env.TOKEN);
 
@@ -127,10 +147,11 @@ client.on("interactionCreate", async i=>{
       const total=await dbGet("SELECT SUM(amount) as total FROM reports WHERE userId=?",[i.user.id]);
       const rows=await dbAll("SELECT type,COUNT(*) as count FROM reports WHERE userId=? GROUP BY type",[i.user.id]);
 
-      let msg="📊 Statystyki\n💰 "+(total.total||0)+"$\n\n";
+      let msg="📊 Statystyki\n💰 "+(total?.total||0)+"$\n\n";
 
       rows.forEach(r=>{
-        msg+=reportTypes[r.type].label+": "+r.count+"\n";
+        if(reportTypes[r.type])
+          msg+=reportTypes[r.type].label+": "+r.count+"\n";
       });
 
       return i.reply(msg);
