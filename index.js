@@ -53,7 +53,7 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
-    .setName("raport2")
+    .setName("raport")
     .setDescription("Dodaj raport")
     .addStringOption(opt =>
       opt.setName("typ")
